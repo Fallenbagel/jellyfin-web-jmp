@@ -475,7 +475,35 @@ import { appRouter } from '../../../components/appRouter';
                 updatePlayerStateInternal(event, player, state);
                 updatePlaylist(player);
                 enableStopOnBack(true);
+                getIntroTimestamps(state.NowPlayingItem);
             }
+        }
+
+        function getIntroTimestamps(item) {
+            const apiClient = ServerConnections.getApiClient(item);
+            const address = apiClient.serverAddress();
+
+            const url = `${address}/Episode/${item.Id}/IntroTimestamps`;
+            const reqInit = {
+                headers: {
+                    "Authorization": `MediaBrowser Token=${apiClient.accessToken()}`
+                }
+            };
+
+            fetch(url, reqInit).then(r => {
+                if (!r.ok) {
+                    return;
+                }
+
+                return r.json();
+            }).then(intro => {
+                tvIntro = intro;
+            });
+        }
+
+        function skipIntro(e) {
+            playbackManager.seekMs(tvIntro.IntroEnd * 1000);
+            playbackManager.playPause(currentPlayer);
         }
 
         function onPlayPauseStateChanged(e) {
@@ -595,6 +623,22 @@ import { appRouter } from '../../../components/appRouter';
                     const item = currentItem;
                     refreshProgramInfoIfNeeded(player, item);
                     showComingUpNextIfNeeded(player, item, currentTime, currentRuntimeTicks);
+
+                    // Check if an introduction sequence was detected for this item.
+                    if (!tvIntro?.Valid) {
+                        return;
+                    }
+
+                    const seconds = playbackManager.currentTime(player) / 1000;
+                    const skipIntro = document.querySelector(".skipIntro");
+
+                    // If the skip prompt should be shown, show it.
+                    if (seconds >= tvIntro.ShowSkipPromptAt && seconds < tvIntro.HideSkipPromptAt) {
+                        skipIntro.classList.remove("hide");
+                        return;
+                    }
+
+                    skipIntro.classList.add("hide");
                 }
             }
         }
@@ -1283,6 +1327,7 @@ import { appRouter } from '../../../components/appRouter';
         let programEndDateMs = 0;
         let playbackStartTimeTicks = 0;
         let subtitleSyncOverlay;
+        let tvIntro;
         const nowPlayingVolumeSlider = view.querySelector('.osdVolumeSlider');
         const nowPlayingVolumeSliderContainer = view.querySelector('.osdVolumeSliderContainer');
         const nowPlayingPositionSlider = view.querySelector('.osdPositionSlider');
@@ -1555,6 +1600,7 @@ import { appRouter } from '../../../components/appRouter';
         });
         view.querySelector('.btnAudio').addEventListener('click', showAudioTrackSelection);
         view.querySelector('.btnSubtitles').addEventListener('click', showSubtitleTrackSelection);
+        view.querySelector('.btnSkipIntro').addEventListener('click', skipIntro);
 
         if (browser.touch) {
             (function () {
